@@ -209,7 +209,7 @@ function generatePDF() {
   localStorage.setItem(counterKey, count);
 
   const belegnummer = `EBE-${today}-${String(count).padStart(3, '0')}`;
-  const pdf = new jsPDF({ unit: 'mm', format: [80, 201] });
+  const pdf = new jsPDF({ unit: 'mm', format: [80, 202] });
   let y = 10;
   const margin = 5;
   const maxWidth = 70;
