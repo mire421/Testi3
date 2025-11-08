@@ -209,7 +209,7 @@ function generatePDF() {
   localStorage.setItem(counterKey, count);
 
   const belegnummer = `EBE-${today}-${String(count).padStart(3, '0')}`;
-  const pdf = new jsPDF({ unit: 'mm', format: [80, 210] });
+  const pdf = new jsPDF({ unit: 'mm', format: [80, 215] });
   let y = 10;
   const margin = 5;
   const maxWidth = 70;
@@ -260,7 +260,7 @@ function generatePDF() {
 
   // Forderung
   addLeftText('Gemäß § 9 der gemeinsamen Beförderungsbedingungen im VVS beträgt unsere Forderung:', 10);
-  addCenteredText('60,00 EUR', 14, true);
+  addCenteredText('60,00 EUR', 13, true);
   addCenteredText('zahlbar innerhalb von 14 Tagen', 10, true);
   addLeftText(`Bereits gezahlt: ${parseFloat(data.zahlung).toFixed(2)} EUR`);
   y += 2;
@@ -274,7 +274,7 @@ function generatePDF() {
   y += 2;
 
   // Zahlungsinformationen
-  addLeftText('Bankverbindung:', 9, true);
+  addLeftText('Bankverbindung:', 10, true);
   addLeftText('Deutsche Bank');
   addLeftText('IBAN: DE1234567890');
   addLeftText('BIC: ABC123');
@@ -282,7 +282,7 @@ function generatePDF() {
   y += 2;
 
   // Kontaktinformationen
-  addLeftText('Kontakt:', 9, true);
+  addLeftText('Kontakt:', 10, true);
   addLeftText('Prüfdienst');
   addLeftText('E-Mail: pruefdienst@abc.de');
   addLeftText('Telefon: 0711 12345');
