@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Ticketing & QR-Code Check (80 mm)</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:#f9f9f9;padding:12px;display:flex;flex-direction:column;gap:16px;align-items:center}
+.panel{width:95%;max-width:500px;background:white;padding:16px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.1);box-sizing:border-box}
+label{display:block;margin-top:8px;font-weight:600}
+input[type=text], input[type=date], input[type=number]{width:100%;padding:8px;margin-top:4px;border:1px solid #ddd;border-radius:6px;font-size:0.9rem}
+.small{font-size:0.8rem;color:#555}
+.ticket-preview{width:calc(80mm);border:1px solid #222;padding:6px;border-radius:6px;background:white;box-sizing:border-box;font-size:0.75rem}
+.ticket-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.event{font-weight:700;flex:1 1 60%;word-break:break-word}
+.meta{word-break:break-word}
+.price{font-weight:700;margin-top:4px}
+.barcode{margin-top:4px;text-align:center}
+.controls{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+button{padding:8px 14px;border-radius:8px;border:0;background:#0b66ff;color:white;font-weight:700;font-size:0.9rem}
+button.ghost{background:#eee;color:#111}
+button.active{background:#28a745;color:white}
+video{width:100%;border:1px solid #ccc;border-radius:6px}
+</style>
+</head>
+<body>
+
+<div class="panel" id="mainMenu">
+<h2>Auswahl</h2>
+<div class="controls">
+<button id="qrCheckBtn">QR-Code Check</button>
+<button id="ticketingBtn">Ticketing</button>
+</div>
+</div>
+
+<div class="panel" id="qrPanel" style="display:none;">
+<h2>QR-Code Check</h2>
+<video id="qrVideo" autoplay></video>
+<canvas id="qrCanvas" style="display:none;"></canvas>
+<div id="qr-result" class="small">Scan Ergebnis: —</div>
+<div class="controls"><button id="backFromQR" class="ghost">Zurück</button></div>
+</div>
+
+<div class="panel" id="metaPanel" style="display:none;">
+<h2>Stammdaten für Ticketing</h2>
+<label>Veranstaltungsname<input id="eventName" type="text" placeholder="z. B. Konzert: Die Band" /></label>
+<label>Ort der Veranstaltung<input id="eventPlace" type="text" placeholder="Stuttgart, Liederhalle" /></label>
+<label>Datum der Veranstaltung<input id="eventDate" type="date" /></label>
+<label>Mitarbeiternummer<input id="staffNo" type="text" placeholder="z. B. A123" /></label>
+<label>Preis regulär<input id="priceReg" type="text" placeholder="z. B. 15 €" /></label>
+<label>Preis ermäßigt<input id="priceRed" type="text" placeholder="z. B. 8 €" /></label>
+<label>Start Ticketnummer<input id="startTicket" type="number" value="1" min="1" /></label>
+<div class="controls"><button id="saveMeta">Stammdaten speichern</button></div>
+</div>
+
+<div class="panel" id="ticketPanel" style="display:none;">
+<h2>Ticket erstellen</h2>
+<div class="controls">
+<button id="regBtn">Regulär</button>
+<button id="redBtn">Ermäßigt</button>
+</div>
+<label>Anmerkung (optional)<input id="note" type="text" placeholder="z. B. Platz: Stehplatz" /></label>
+<div class="controls">
+<button id="backFromTicket" class="ghost">Zurück</button>
+</div>
+<div class="ticket-preview" id="ticket">
+<div class="ticket-head"><div><div class="event" id="pvEvent">Veranstaltung</div><div class="meta" id="pvPlace">Ort</div></div><div class="meta" id="pvDate">Datum</div></div>
+<div class="meta" id="pvPrintTime">Ausgedruckt: —</div>
+<div class="price" id="pvPrice">Preis: —</div>
+<div class="meta" id="pvStaff">MA-Nr: — | Ticket-Nr: —</div>
+<div class="barcode" id="pvQR"></div>
+<div class="meta" id="pvNote"></div>
+</div>
+</div>
+
+<footer class="small">Hinweis: Stammdaten werden lokal gespeichert. QR-Validierung erfolgt über Prüfsumme.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+const el=id=>document.getElementById(id);
+let secretKey='geheimerSchluessel123';
+function pad(n){return String(n).padStart(5,'0');}
+
+// Menü Navigation
+el('qrCheckBtn').onclick=()=>{el('mainMenu').style.display='none';el('qrPanel').style.display='block';startQRScanner();}
+el('ticketingBtn').onclick=()=>{el('mainMenu').style.display='none';el('metaPanel').style.display='block';}
+el('backFromQR').onclick=()=>{el('qrPanel').style.display='none';el('mainMenu').style.display='block';}
+el('backFromTicket').onclick=()=>{el('ticketPanel').style.display='none';el('metaPanel').style.display='block';}
+
+// Stammdaten
+function saveMeta(){
+  const meta={eventName:el('eventName').value, eventPlace:el('eventPlace').value, eventDate:el('eventDate').value, staffNo:el('staffNo').value, priceReg:el('priceReg').value, priceRed:el('priceRed').value};
+  localStorage.setItem('ticket_meta',JSON.stringify(meta));
+  if(!localStorage.getItem('lastTicket')) localStorage.setItem('lastTicket',String(parseInt(el('startTicket').value||'1',10)-1));
+  el('metaPanel').style.display='none';
+  el('ticketPanel').style.display='block';
+  updatePreview();
+}
+el('saveMeta').onclick=saveMeta;
+
+function getNextTicketNumber(){let last=parseInt(localStorage.getItem('lastTicket')||'0',10)+1;localStorage.setItem('lastTicket',String(last));return pad(last);}
+function peekNextTicketNumber(){const last=parseInt(localStorage.getItem('lastTicket')||(parseInt(el('startTicket').value||'1',10)-1),10);return pad(last+1);}
+function simpleHash(str){let hash=0;for(let i=0;i<str.length;i++){hash=(hash<<5)-hash+str.charCodeAt(i);hash=hash & hash;}return Math.abs(hash);}
+
+function updatePreview(price=null){
+  const meta=JSON.parse(localStorage.getItem('ticket_meta')||'{}');
+  el('pvEvent').textContent=meta.eventName||'—';
+  el('pvPlace').textContent=meta.eventPlace||'—';
+  el('pvDate').textContent=meta.eventDate||'—';
+  el('pvPrintTime').textContent='Ausgedruckt: '+new Date().toLocaleString();
+  el('pvPrice').textContent='Preis: '+(price||'—');
+  el('pvStaff').textContent='MA-Nr: '+(meta.staffNo||'—')+' | Ticket-Nr: '+peekNextTicketNumber();
+  el('pvNote').textContent=el('note').value||'';
+  const qrStr=(meta.eventName||'')+'|'+(meta.eventDate||'')+'|'+peekNextTicketNumber()+'|'+simpleHash((meta.eventName||'')+(meta.eventDate||'')+peekNextTicketNumber()+secretKey);
+  el('pvQR').innerHTML='';
+  new QRCode(el('pvQR'),{text:qrStr,width:100,height:100});
+  generatePDF(qrStr,price);
+}
+
+function generatePDF(qrStr,price){
+  const ticketEl=el('ticket'); ticketEl.style.background='white';
+  html2canvas(ticketEl,{scale:2, useCORS:true, backgroundColor:'#ffffff'}).then(canvas=>{
+    const imgData=canvas.toDataURL('image/jpeg',0.95);
+    const pdfWidth=80,pdfHeight=(canvas.height*pdfWidth)/canvas.width;
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({unit:'mm',format:[pdfWidth,Math.ceil(pdfHeight)]});
+    pdf.addImage(imgData,'JPEG',0,0,pdfWidth,pdfHeight);
+    const ticketNo=getNextTicketNumber();
+    const meta=JSON.parse(localStorage.getItem('ticket_meta')||'{}');
+    const fname=(meta.eventName?meta.eventName.replace(/[^a-z0-9\-_ ]/gi,'')+'_':'')+ticketNo+'.pdf';
+    pdf.save(fname);
+  });
+}
+
+el('regBtn').onclick=()=>{
+  const meta=JSON.parse(localStorage.getItem('ticket_meta')||'{}');
+  updatePreview(meta.priceReg);
+}
+el('redBtn').onclick=()=>{
+  const meta=JSON.parse(localStorage.getItem('ticket_meta')||'{}');
+  updatePreview(meta.priceRed);
+}
+
+// Kamera QR Scanner
+async function startQRScanner(){
+  const video=el('qrVideo');
+  const canvas=el('qrCanvas');
+  const ctx=canvas.getContext('2d');
+  try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});video.srcObject=stream;}catch(e){el('qr-result').textContent='Kamerazugriff verweigert oder nicht verfügbar';return;}
+  let lastResult='';
+  function tick(){
+    if(video.readyState===video.HAVE_ENOUGH_DATA){
+      canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+      ctx.drawImage(video,0,0);
+      const imgData=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const code=jsQR(imgData.data,imgData.width,imgData.height);
+      if(code){
+        const parts=code.data.split('|');
+        if(parts.length===4){
+          const [eventName,date,ticketNo,hash]=parts;
+          const calcHash=simpleHash(eventName+date+ticketNo+secretKey);
+          const result=(String(calcHash)===hash)?'✅ Ticket gültig: '+eventName+' | '+ticketNo:'❌ Ungültiger Ticketcode';
+          if(result!==lastResult){el('qr-result').textContent=result; lastResult=result;}
+        } else {if('Ungültiger QR-Code'!==lastResult){el('qr-result').textContent='Ungültiger QR-Code'; lastResult='Ungültiger QR-Code';}}
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+</script>
+
+</body>
+</html>
